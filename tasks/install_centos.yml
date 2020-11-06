@@ -1,0 +1,99 @@
+---
+  - name: Add an apt key by id from a keyserver
+    apt_key:
+      keyserver: keyserver.ubuntu.com
+      id: 78BD65473CB3BD13
+    become: true
+   
+  - name: Install nfs-common package
+    apt:
+      name: nfs-common
+      state: present
+      update_cache: yes
+    become: true
+
+  - name: Create nfs shared directory
+    file:
+      path: /Data/etudiant/nfs
+      owner: etudiant
+      group: etudiant
+      mode: '0755'
+      state: directory
+
+  - name: Mount NFS Shares
+    shell: mount 192.168.4.177:/var/nfs /Data/etudiant/nfs
+    become: true
+  
+  - name: Set up Vbox default dir
+    command: vboxmanage setproperty machinefolder /Data/etudiant
+  
+  - name: "Create VM {{ vm_name }}"
+    command: "vboxmanage import {{ path_to_ova }}/canaima-centos-template.ova --vsys 0 --vmname {{ vm_name }} --memory {{ vm_memory }} --cpus {{ vm_cpus }}"
+    args:
+      chdir: /Data/etudiant/
+  
+  - name: "Start VM {{ vm_name }}"
+    command: "VBoxManage startvm {{ vm_name }} --type headless"
+  
+  - name: sleep for 80 seconds and continue with play
+    wait_for: timeout=80
+  
+  - name: "Generate correct /etc/hosts file on {{ vm_name }}" 
+    lineinfile:
+      path: /etc/hosts
+      regexp: '^127.0.1.1'
+      line: "127.0.1.1    {{ vm_name }}"
+    delegate_to: "{{ template_ip }}"
+    remote_user: ansible
+    become: true
+  
+  - name: "Generate correct /etc/hosts file on {{ vm_name }} (IPv6)" 
+    lineinfile:
+      path: /etc/hosts
+      regexp: '^::1'
+      line: "::1   {{ vm_name }}"
+    delegate_to: "{{ template_ip }}"
+    remote_user: ansible
+    become: true
+  
+  - name: "Set hostname to {{ vm_name }} in hostnamectl on {{ vm_name }}"
+    command: "hostnamectl set-hostname {{ vm_name }}"
+    delegate_to: "{{ template_ip }}"
+    remote_user: ansible
+    become: true
+  
+  - name: "Set ip to {{ vm_ip }} on {{ vm_name }}"
+    lineinfile:
+      path: /etc/sysconfig/network-scripts/ifcfg-enp0s3 
+      regexp: '^IPADDR'
+      line: "IPADDR={{ vm_ip }}"
+    delegate_to: "{{ template_ip }}"
+    remote_user: ansible
+    become: true
+  
+  - name: Change default UUID in /etc/sysconfig/network-scripts/ifcfg-enp0s3
+    lineinfile: 
+      dest: /etc/sysconfig/network-scripts/ifcfg-enp0s3 
+      regexp: "^UUID"
+      line: "AAA"
+    delegate_to: "{{ template_ip }}"
+    remote_user: ansible
+    become: true
+  
+  - name: Generate new UUID and put it into ifcfg-enp0s3
+    shell: sed -i "s/AAA/UUID=$(uuidgen)/" /etc/sysconfig/network-scripts/ifcfg-enp0s3
+    delegate_to: "{{ template_ip }}"
+    remote_user: ansible
+    become: true
+
+  - name: "Reboot {{ vm_name }}"
+    reboot:
+      reboot_timeout: 10
+    delegate_to: "{{ template_ip }}"
+    remote_user: ansible
+    become: true
+    ignore_errors: yes
+  
+  - name: sleep for 100 seconds and continue with play
+    wait_for: timeout=100
+  

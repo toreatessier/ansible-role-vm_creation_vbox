@@ -1,0 +1,170 @@
+---
+# - name: Install zabbix-api
+#   pip:
+#     name: zabbix-api
+
+- name: Git clone .ova template
+  command: "git clone {{ ova_repo }}"
+  args:
+    chdir: "{{ path_to_ova }}"
+  when: git_clone_ova==true
+
+- name: "Create VM {{ vm_name }}"
+  command: "vboxmanage import {{ path_to_ova }}/debian9-template/debian10_template.ova --vsys 0 --vmname {{ vm_name }} --memory {{ vm_memory }}"
+
+- name: "Start VM {{ vm_name }}"
+  command: "VBoxManage startvm {{ vm_name }} --type headless"
+
+- name: sleep for 60 seconds and continue with play
+  wait_for: timeout=60
+
+- name: "Generate correct /etc/hosts file on {{ vm_name }}" 
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^127.0.1.1'
+    line: "127.0.1.1    {{ vm_name }}"
+  delegate_to: "{{ template_ip }}"
+  remote_user: ansible
+  become: true
+
+- name: "Set hostname to {{ vm_name }} in hostnamectl on {{ vm_name }}"
+  command: "hostnamectl set-hostname {{ vm_name }}"
+  delegate_to: "{{ template_ip }}"
+  remote_user: ansible
+  become: true
+
+- name: "Set ip to {{ vm_ip }} on {{ vm_name }}"
+  lineinfile:
+    path: /etc/network/interfaces
+    regexp: '^\taddress'
+    line: "        address {{ vm_ip }}"
+  delegate_to: "{{ template_ip }}"
+  remote_user: ansible
+  become: true
+
+- name: "Reboot {{ vm_name }}"
+  reboot:
+    reboot_timeout: 10
+  delegate_to: "{{ template_ip }}"
+  remote_user: ansible
+  become: true
+  ignore_errors: yes
+
+- name: sleep for 100 seconds and continue with play
+  wait_for: timeout=100
+
+# - name: "Install Zabbix agent on {{ vm_name }}"
+#   apt:
+#     name: zabbix-agent
+#     state: present
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+
+# - name: "Configure Zabbix agent on {{ vm_name }}"
+#   copy:
+#     src: "{{ role_path }}/files/zabbix_agentd.conf"
+#     dest: /etc/zabbix/zabbix_agentd.conf
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+
+# - name: "Set hostname to in zabbix_agentd.conf on {{ vm_name }}"
+#   lineinfile:
+#     path: /etc/zabbix/zabbix_agentd.conf
+#     regexp: '^Hostname='
+#     line: "Hostname={{ vm_name }}"
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+
+# - name: "Restart zabbix-agent service on {{ vm_name }}"
+#   systemd:
+#     name: zabbix-agent
+#     state: restarted
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+
+# - name: "Add host {{ vm_name }} on Zabbix server"
+#   become_user: etudiant
+#   zabbix_host:
+#     server_url: "{{ zabbix_url }}"
+#     login_user: "{{ zabbix_login }}"
+#     login_password: "{{ zabbix_password }}"
+#     host_name: "{{ vm_name }}"
+#     visible_name: "{{ vm_name }}"
+#     host_groups:
+#       - Linux servers
+#       - Virtual machines
+#     link_templates:
+#       - Template OS Linux
+#     status: enabled
+#     state: present
+#     inventory_mode: disabled
+#     interfaces:
+#       - type: 1
+#         main: 1
+#         useip: 1
+#         ip: "{{ vm_ip }}"
+#         dns: ""
+#         port: 10050
+
+# ### ---------------------- Rudder agent installation ---------------------- ###
+# - name: Install syslog-ng
+#   apt:
+#     name: syslog-ng
+#     state: present
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+
+# - name: Get Rudder apt public key 
+#   apt_key:
+#     url: "{{ rudder_pubkey_url }}"
+#     state: present
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+
+# - name: Add Rudder's repository
+#   apt_repository:
+#     repo: "{{ rudder_repo }}"
+#     state: present
+#     update_cache: yes #apt-get update
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+
+# # apt-get update
+# - name: Update cache
+#   apt:
+#     update_cache: yes
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+
+# - name: Install Rudder agent
+#   apt: 
+#     name: rudder-agent
+#     state: present
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+
+# - name: Configure Rudder agent
+#   shell: "echo '{{ rudder_ip }}' > /var/rudder/cfengine-community/policy_server.dat"
+#   args:
+#     executable: /bin/bash
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+
+# - name: Start Rudder agent
+#   shell: rudder agent start
+#   args:
+#     executable: /bin/bash
+#   delegate_to: "{{ vm_ip }}"
+#   remote_user: ansible
+#   become: true
+# ### ----------------------------------------------------------------------- ###
